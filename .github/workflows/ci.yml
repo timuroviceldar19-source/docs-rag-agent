@@ -22,7 +22,7 @@ jobs:
       - name: Cache fastembed models
         uses: actions/cache@v4
         with:
-          path: ~/.cache/fastembed
+          path: /tmp/fastembed_cache
           key: fastembed-bge-small-en-v1.5
 
       - name: Install dependencies
