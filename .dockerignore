@@ -1,0 +1,13 @@
+.venv/
+.cache/
+qdrant_storage/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+docs-rag-agent/

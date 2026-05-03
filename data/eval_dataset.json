@@ -1,0 +1,62 @@
+[
+  {
+    "id": "q01",
+    "question": "How do I declare path parameters in FastAPI?",
+    "expected_source_contains": "path-params",
+    "reference_answer": "Use curly braces in the path string, e.g. @app.get('/items/{item_id}'). FastAPI extracts and validates the parameter automatically."
+  },
+  {
+    "id": "q02",
+    "question": "How do I define a request body using Pydantic in FastAPI?",
+    "expected_source_contains": "body",
+    "reference_answer": "Create a class that inherits from pydantic.BaseModel and use it as a type annotation in your path operation function."
+  },
+  {
+    "id": "q03",
+    "question": "How do I use dependency injection in FastAPI?",
+    "expected_source_contains": "dependencies",
+    "reference_answer": "Declare a function and pass it as a default value using Depends(). FastAPI resolves and injects it automatically."
+  },
+  {
+    "id": "q04",
+    "question": "How do I add query parameters to a FastAPI endpoint?",
+    "expected_source_contains": "query-params",
+    "reference_answer": "Add function parameters that are not path parameters. FastAPI treats them as query parameters automatically."
+  },
+  {
+    "id": "q05",
+    "question": "How do I define a response model in FastAPI?",
+    "expected_source_contains": "response-model",
+    "reference_answer": "Use the response_model parameter in the path operation decorator, e.g. @app.get('/items', response_model=Item)."
+  },
+  {
+    "id": "q06",
+    "question": "How do I run background tasks in FastAPI?",
+    "expected_source_contains": "background-tasks",
+    "reference_answer": "Use the BackgroundTasks parameter in your path operation function and call add_task() to schedule work after the response is sent."
+  },
+  {
+    "id": "q07",
+    "question": "How do I handle startup and shutdown events in FastAPI?",
+    "expected_source_contains": "events",
+    "reference_answer": "Use the lifespan context manager or the on_event decorator with 'startup' and 'shutdown' event types."
+  },
+  {
+    "id": "q08",
+    "question": "How do I add CORS middleware to a FastAPI application?",
+    "expected_source_contains": "middleware",
+    "reference_answer": "Import CORSMiddleware from fastapi.middleware.cors and add it with app.add_middleware(), specifying allowed origins."
+  },
+  {
+    "id": "q09",
+    "question": "How do I create async path operations in FastAPI?",
+    "expected_source_contains": "async",
+    "reference_answer": "Use async def instead of def for your path operation functions. FastAPI handles both sync and async handlers."
+  },
+  {
+    "id": "q10",
+    "question": "How do I create the first FastAPI application?",
+    "expected_source_contains": "first-steps",
+    "reference_answer": "Import FastAPI, create an app instance, and define a path operation with a decorator like @app.get('/')."
+  }
+]
