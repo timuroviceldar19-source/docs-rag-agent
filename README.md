@@ -93,6 +93,18 @@ uvicorn docs_rag_agent.api.main:app --reload
 # → http://localhost:8000/docs
 ```
 
+### Run the Streamlit UI (optional)
+
+In a second terminal, with the API already running:
+
+```bash
+pip install -e ".[ui]"
+streamlit run streamlit_app/app.py
+# → http://localhost:8501
+```
+
+The UI hits `BACKEND_URL` (default `http://localhost:8000`). Override via env var if the API runs elsewhere.
+
 ### Full stack with Docker
 
 ```bash
@@ -146,6 +158,7 @@ ruff check .    # linting
 | Tests | pytest 8 · mypy --strict · ruff |
 | Tracing | Langfuse (optional) |
 | Container | Docker + Docker Compose |
+| UI | Streamlit (optional) |
 
 ## Project structure
 

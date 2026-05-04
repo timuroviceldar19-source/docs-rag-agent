@@ -1,4 +1,4 @@
-.PHONY: install qdrant-up qdrant-down lint format typecheck test check help
+.PHONY: install qdrant-up qdrant-down lint format typecheck test check help ui
 
 help: ## Print each target with a one-line description
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -25,3 +25,6 @@ test: ## pytest
 	pytest
 
 check: lint typecheck test ## runs lint, typecheck, test in order
+
+ui: ## streamlit run streamlit_app/app.py
+	streamlit run streamlit_app/app.py

@@ -33,6 +33,9 @@ dev = [
 langfuse = [
     "langfuse ~= 2.0",
 ]
+ui = [
+    "streamlit ~= 1.40",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]
