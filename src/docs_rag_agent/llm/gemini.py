@@ -1,7 +1,8 @@
 import google.genai as genai  # type: ignore[import-untyped]
+import google.genai.errors as genai_errors  # type: ignore[import-untyped]
 import google.genai.types as genai_types  # type: ignore[import-untyped]
 
-from docs_rag_agent.llm.base import LLMResponse, Message
+from docs_rag_agent.llm.base import LLMError, LLMRateLimitError, LLMResponse, Message
 
 
 class GeminiClient:
@@ -32,11 +33,17 @@ class GeminiClient:
             system_instruction=system_instruction,
         )
 
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=contents,
-            config=config,
-        )
+        try:
+            response = self._client.models.generate_content(
+                model=self._model,
+                contents=contents,
+                config=config,
+            )
+        except genai_errors.APIError as e:
+            code = getattr(e, "code", None) or getattr(e, "status_code", None)
+            if code == 429:
+                raise LLMRateLimitError(str(e)) from e
+            raise LLMError(f"Gemini API error: {e}") from e
 
         usage = response.usage_metadata
         input_tokens = usage.prompt_token_count if usage and usage.prompt_token_count else 0

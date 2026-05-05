@@ -3,7 +3,7 @@ from typing import cast
 import anthropic
 from anthropic.types import TextBlock
 
-from docs_rag_agent.llm.base import LLMResponse, Message
+from docs_rag_agent.llm.base import LLMError, LLMRateLimitError, LLMResponse, Message
 
 
 class AnthropicClient:
@@ -25,13 +25,18 @@ class AnthropicClient:
 
         api_messages = [{"role": m.role, "content": m.content} for m in other_messages]
 
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            system=system_prompt,  # type: ignore[arg-type]
-            messages=api_messages,  # type: ignore[arg-type]
-        )
+        try:
+            response = self._client.messages.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,  # type: ignore[arg-type]
+                messages=api_messages,  # type: ignore[arg-type]
+            )
+        except anthropic.RateLimitError as e:
+            raise LLMRateLimitError(str(e)) from e
+        except anthropic.APIError as e:
+            raise LLMError(f"Anthropic API error: {e}") from e
 
         content_block = cast(TextBlock, response.content[0])
         return LLMResponse(

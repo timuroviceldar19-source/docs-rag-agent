@@ -27,3 +27,15 @@ class LLMClient(Protocol):
         max_tokens: int = 1024,
         temperature: float = 0.0,
     ) -> LLMResponse: ...
+
+
+class LLMError(Exception):
+    """Base exception for LLM provider failures, normalized across providers."""
+
+
+class LLMRateLimitError(LLMError):
+    """Raised when the provider returns a rate-limit / quota / 429 error."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after

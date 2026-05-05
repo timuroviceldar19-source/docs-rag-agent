@@ -49,7 +49,7 @@
 
 - **No deduplication across agent iterations.** A 5-iteration ReAct run with `top_k=3` accumulates up to 15 chunks in `result.sources`, often dominated by a single source file when the agent re-issues similar queries. Fix: dedupe by `(source, heading, text-prefix)` in `agent/loop.py` before returning, and ideally feed the agent a "you've already seen X" signal in observations.
 - **Agent wastes iterations on dead-end queries.** Vague questions (e.g. `"FastAPI documentation"`) cause 5 fruitless `search_docs` calls and ~4k tokens burned, ending in `"Could not find a definitive answer within the iteration limit."` Fix in agent system prompt: "If two consecutive searches return the same sources, either reformulate the query substantially or give up early with a partial answer."
-- **Backend conflates third-party rate limits with internal errors.** `429 RESOURCE_EXHAUSTED` from Gemini propagates to the client as `500 Internal Server Error`. Fix: catch `google.genai.errors.ClientError` in `llm/gemini.py` (and equivalents in other providers), re-raise as `HTTPException(503, retry_after=...)` in the API layer.
+- ~~**Backend conflates third-party rate limits with internal errors.**~~ **Resolved 2026-05-04.** All three LLM providers (`gemini`, `anthropic`, `openai`) now raise domain exceptions `LLMRateLimitError` / `LLMError` from `llm/base.py` instead of leaking SDK-specific errors. FastAPI exception handlers map `LLMRateLimitError → 503 (with Retry-After)` and `LLMError → 502`. Covered by 4 new tests in `tests/test_api.py`.
 
 ## Operational lessons (not bugs)
 

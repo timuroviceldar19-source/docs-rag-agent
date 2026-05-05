@@ -1,11 +1,12 @@
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from docs_rag_agent.agent.loop import run_agent
 from docs_rag_agent.api.dependencies import get_llm_client, get_vector_store
-from docs_rag_agent.llm import Message
+from docs_rag_agent.llm import LLMError, LLMRateLimitError, Message
 from docs_rag_agent.tracing import trace_agent, trace_query
 
 app = FastAPI(
@@ -51,6 +52,24 @@ class AgentResponse(BaseModel):
     model: str
     input_tokens: int
     output_tokens: int
+
+@app.exception_handler(LLMRateLimitError)
+def _handle_rate_limit(_request: Request, exc: Exception) -> JSONResponse:
+    assert isinstance(exc, LLMRateLimitError)
+    headers: dict[str, str] = {}
+    if exc.retry_after is not None:
+        headers["Retry-After"] = str(int(exc.retry_after))
+    return JSONResponse(
+        status_code=503,
+        content={"detail": f"LLM provider rate limit: {exc}"},
+        headers=headers,
+    )
+
+
+@app.exception_handler(LLMError)
+def _handle_llm_error(_request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=502, content={"detail": f"Upstream LLM error: {exc}"})
+
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:

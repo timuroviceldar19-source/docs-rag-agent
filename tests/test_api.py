@@ -5,7 +5,7 @@ from qdrant_client import QdrantClient
 from docs_rag_agent.api import dependencies
 from docs_rag_agent.api.main import app
 from docs_rag_agent.embeddings import FastEmbedLocalEmbedder
-from docs_rag_agent.llm.base import LLMResponse, Message
+from docs_rag_agent.llm.base import LLMError, LLMRateLimitError, LLMResponse, Message
 from docs_rag_agent.retrieve import VectorStore
 
 # --- Fake LLM client ---
@@ -121,3 +121,60 @@ def test_query_too_short_returns_422(client: TestClient) -> None:
 def test_query_top_k_too_large_returns_422(client: TestClient) -> None:
     response = client.post("/query", json={"question": "What is FastAPI?", "top_k": 99})
     assert response.status_code == 422
+
+
+# --- LLM error handling (Bug #4) ---
+
+class _RateLimitedLLM:
+    def generate(
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> LLMResponse:
+        raise LLMRateLimitError("quota exceeded", retry_after=46.0)
+
+
+class _BrokenLLM:
+    def generate(
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> LLMResponse:
+        raise LLMError("upstream broke")
+
+
+def _patched_client(populated_store: VectorStore, llm_factory: object) -> TestClient:
+    import docs_rag_agent.api.main as main_module
+    main_module.get_vector_store = lambda: populated_store  # type: ignore[assignment]
+    main_module.get_llm_client = llm_factory  # type: ignore[assignment]
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_query_rate_limit_returns_503(populated_store: VectorStore) -> None:
+    c = _patched_client(populated_store, lambda: _RateLimitedLLM())
+    response = c.post("/query", json={"question": "What is FastAPI?", "top_k": 5})
+    assert response.status_code == 503
+    assert response.headers.get("retry-after") == "46"
+
+
+def test_query_llm_error_returns_502(populated_store: VectorStore) -> None:
+    c = _patched_client(populated_store, lambda: _BrokenLLM())
+    response = c.post("/query", json={"question": "What is FastAPI?", "top_k": 5})
+    assert response.status_code == 502
+
+
+def test_agent_rate_limit_returns_503(populated_store: VectorStore) -> None:
+    c = _patched_client(populated_store, lambda: _RateLimitedLLM())
+    response = c.post("/agent", json={"question": "What is FastAPI?", "max_iterations": 3})
+    assert response.status_code == 503
+    assert response.headers.get("retry-after") == "46"
+
+
+def test_agent_llm_error_returns_502(populated_store: VectorStore) -> None:
+    c = _patched_client(populated_store, lambda: _BrokenLLM())
+    response = c.post("/agent", json={"question": "What is FastAPI?", "max_iterations": 3})
+    assert response.status_code == 502
