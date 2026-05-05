@@ -19,6 +19,14 @@ def build_llm_client(settings: Settings) -> LLMClient:
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
         return OpenAIClient(api_key=settings.openai_api_key, model=settings.openai_model)
+    if provider == "groq":
+        if not settings.groq_api_key:
+            raise ValueError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
+        return OpenAIClient(
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
+            base_url="https://api.groq.com/openai/v1",
+        )
     raise ValueError(
-        f"Unknown LLM_PROVIDER={settings.llm_provider!r}. Allowed: gemini, anthropic, openai."
+        f"Unknown LLM_PROVIDER={settings.llm_provider!r}. Allowed: gemini, anthropic, openai, groq."
     )

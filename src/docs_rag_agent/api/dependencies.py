@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import functools
 
+from fastapi import HTTPException, Security
+from fastapi.security import APIKeyHeader
 from qdrant_client import QdrantClient
 
 from docs_rag_agent.config import Settings
@@ -9,10 +11,19 @@ from docs_rag_agent.embeddings import FastEmbedLocalEmbedder
 from docs_rag_agent.llm import LLMClient, build_llm_client
 from docs_rag_agent.retrieve import VectorStore
 
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
 
 @functools.lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def verify_api_key(api_key: str | None = Security(api_key_header)) -> str:
+    settings = get_settings()
+    if api_key != settings.api_key:
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
+    return api_key
 
 
 @functools.lru_cache(maxsize=1)

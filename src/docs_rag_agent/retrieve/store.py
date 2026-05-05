@@ -52,20 +52,22 @@ class VectorStore:
                 ),
             )
 
-    def upsert(self, documents: list[Document]) -> None:
-        """Embed and upsert documents. Assigns a UUID id if doc.id is empty."""
-        texts = [doc.text for doc in documents]
-        vectors = self._embedder.embed(texts)
+    def upsert(self, documents: list[Document], batch_size: int = 250) -> None:
+        """Embed and upsert documents in batches. Assigns a UUID id if doc.id is empty."""
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i : i + batch_size]
+            texts = [doc.text for doc in batch]
+            vectors = self._embedder.embed(texts)
 
-        points = [
-            PointStruct(
-                id=doc.id if doc.id else str(uuid.uuid4()),
-                vector=vector,
-                payload={"text": doc.text, **doc.metadata},
-            )
-            for doc, vector in zip(documents, vectors, strict=True)
-        ]
-        self._client.upsert(collection_name=self._collection, points=points)
+            points = [
+                PointStruct(
+                    id=doc.id if doc.id else str(uuid.uuid4()),
+                    vector=vector,
+                    payload={"text": doc.text, **doc.metadata},
+                )
+                for doc, vector in zip(batch, vectors, strict=True)
+            ]
+            self._client.upsert(collection_name=self._collection, points=points)
 
     def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
         """Embed query and return top-k nearest documents."""
@@ -84,3 +86,4 @@ class VectorStore:
             )
             for hit in response.points
         ]
+

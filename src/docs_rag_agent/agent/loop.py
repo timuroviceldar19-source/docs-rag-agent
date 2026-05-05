@@ -40,14 +40,23 @@ You have access to ONE tool:
 On EVERY turn, respond with ONLY a JSON object — no prose, no markdown fences.
 
 When you need to search, use:
-{"thought": "<your reasoning>", "action": "search_docs", 
+{"thought": "<your reasoning>", "action": "search_docs",
  "action_input": {"query": "<query>", "top_k": 3}}
 
 When you have enough information to answer, use:
 {"thought": "<your reasoning>", "final_answer": "<complete answer citing source files>"}
 
-Always call search_docs at least once before giving a final_answer.
-Cite source files in your answer using [filename.md] notation."""
+Rules:
+- Always call search_docs at least once before giving a final_answer.
+- If an observation says all results were already seen, REFORMULATE substantially
+  (different keywords, different angle) — do not repeat near-identical queries.
+- If you cannot make progress after a couple of searches, give a partial
+  final_answer with whatever you have rather than burning more iterations.
+- Cite source files in your answer using [filename.md] notation."""
+
+
+def _source_key(r: SearchResult) -> tuple[str, str, str]:
+    return (r.metadata.get("source", ""), r.metadata.get("heading", ""), r.text[:64])
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -75,6 +84,8 @@ def run_agent(
     ]
     steps: list[AgentStep] = []
     all_sources: list[SearchResult] = []
+    seen_keys: set[tuple[str, str, str]] = set()
+    consecutive_empty = 0
     total_input = 0
     total_output = 0
     model_name = ""
@@ -85,8 +96,21 @@ def run_agent(
         total_output += response.output_tokens
         model_name = response.model
 
-        raw = _extract_json(response.content)
-        thought = str(raw.get("thought", ""))
+        try:
+            raw = _extract_json(response.content)
+            thought = str(raw.get("thought", ""))
+        except json.JSONDecodeError as e:
+            step = AgentStep(
+                thought="System: Failed to parse previous JSON output.",
+                observation=(
+                    f"Invalid JSON produced: {e}. "
+                    "Ensure you ONLY output valid JSON without any leading text."
+                ),
+            )
+            steps.append(step)
+            messages.append(Message(role="assistant", content=response.content))
+            messages.append(Message(role="user", content=f"Observation: {step.observation}"))
+            continue
 
         if "final_answer" in raw:
             step = AgentStep(thought=thought, final_answer=str(raw["final_answer"]))
@@ -111,19 +135,50 @@ def run_agent(
                 query = str(action_input.get("query", question))
                 top_k = int(action_input.get("top_k", 3))
                 results = execute_search(store, query, top_k)
-                all_sources.extend(results)
-                
-                obs_list = []
+
+                new_results: list[SearchResult] = []
                 for r in results:
-                    obs_list.append({
-                        "source": r.metadata.get("source", ""),
-                        "heading": r.metadata.get("heading", ""),
-                        "text": r.text[:300]
-                    })
-                step.observation = json.dumps(obs_list)
+                    key = _source_key(r)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        new_results.append(r)
+                        all_sources.append(r)
+
+                if not new_results:
+                    consecutive_empty += 1
+                    step.observation = (
+                        f"All {len(results)} results from this query were already "
+                        f"seen in previous searches. Reformulate with different "
+                        f"keywords, or commit to a final_answer with what you have."
+                    )
+                else:
+                    consecutive_empty = 0
+                    obs_list = [
+                        {
+                            "source": r.metadata.get("source", ""),
+                            "heading": r.metadata.get("heading", ""),
+                            "text": r.text[:300],
+                        }
+                        for r in new_results
+                    ]
+                    step.observation = json.dumps(obs_list)
+
+                if consecutive_empty >= 2:
+                    steps.append(step)
+                    return AgentResult(
+                        answer=(
+                            "Stopped early: two consecutive searches returned no "
+                            "new sources. Try a more specific question."
+                        ),
+                        steps=steps,
+                        sources=all_sources,
+                        model=model_name,
+                        input_tokens=total_input,
+                        output_tokens=total_output,
+                    )
             else:
                 step.observation = f"Unknown tool: {action}"
-            
+
             steps.append(step)
             messages.append(Message(role="assistant", content=response.content))
             messages.append(Message(role="user", content=f"Observation: {step.observation}"))

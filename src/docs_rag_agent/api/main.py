@@ -1,13 +1,16 @@
+import logging
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from docs_rag_agent.agent.loop import run_agent
-from docs_rag_agent.api.dependencies import get_llm_client, get_vector_store
+from docs_rag_agent.api.dependencies import get_llm_client, get_vector_store, verify_api_key
 from docs_rag_agent.llm import LLMError, LLMRateLimitError, Message
 from docs_rag_agent.tracing import trace_agent, trace_query
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="docs-rag-agent",
@@ -68,14 +71,15 @@ def _handle_rate_limit(_request: Request, exc: Exception) -> JSONResponse:
 
 @app.exception_handler(LLMError)
 def _handle_llm_error(_request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(status_code=502, content={"detail": f"Upstream LLM error: {exc}"})
+    logger.error("Upstream LLM error: %s", exc)
+    return JSONResponse(status_code=502, content={"detail": "Upstream LLM request failed"})
 
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, dependencies=[Depends(verify_api_key)])
 def query(request: QueryRequest) -> QueryResponse:
     store = get_vector_store()
     llm = get_llm_client()
@@ -131,7 +135,7 @@ def query(request: QueryRequest) -> QueryResponse:
     )
     return result
 
-@app.post("/agent", response_model=AgentResponse)
+@app.post("/agent", response_model=AgentResponse, dependencies=[Depends(verify_api_key)])
 def agent_endpoint(request: AgentRequest) -> AgentResponse:
     store = get_vector_store()
     llm = get_llm_client()

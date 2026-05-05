@@ -75,7 +75,7 @@ def client(
     main_module.get_vector_store = lambda: populated_store  # type: ignore[assignment]
     main_module.get_llm_client = lambda: FakeLLMClient()  # type: ignore[assignment]
 
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "dev-key"})
 
 
 # --- Tests ---
@@ -151,7 +151,7 @@ def _patched_client(populated_store: VectorStore, llm_factory: object) -> TestCl
     import docs_rag_agent.api.main as main_module
     main_module.get_vector_store = lambda: populated_store  # type: ignore[assignment]
     main_module.get_llm_client = llm_factory  # type: ignore[assignment]
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(app, raise_server_exceptions=False, headers={"X-API-Key": "dev-key"})
 
 
 def test_query_rate_limit_returns_503(populated_store: VectorStore) -> None:

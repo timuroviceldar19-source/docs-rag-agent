@@ -5,8 +5,8 @@ from docs_rag_agent.llm.base import LLMError, LLMRateLimitError, LLMResponse, Me
 
 
 class OpenAIClient:
-    def __init__(self, api_key: str, model: str) -> None:
-        self._client = OpenAI(api_key=api_key)
+    def __init__(self, api_key: str, model: str, base_url: str | None = None) -> None:
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
 
     def generate(

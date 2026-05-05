@@ -8,6 +8,7 @@ import httpx
 import streamlit as st
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
+API_KEY = os.getenv("API_KEY", "dev-key")
 TIMEOUT = 60.0
 
 st.set_page_config(
@@ -36,7 +37,7 @@ with st.sidebar:
 
 
 def call_query(question: str, top_k: int) -> dict[str, Any]:
-    with httpx.Client(timeout=TIMEOUT) as client:
+    with httpx.Client(timeout=TIMEOUT, headers={"X-API-Key": API_KEY}) as client:
         response = client.post(
             f"{BACKEND_URL}/query",
             json={"question": question, "top_k": top_k},
@@ -46,7 +47,7 @@ def call_query(question: str, top_k: int) -> dict[str, Any]:
 
 
 def call_agent(question: str, max_iterations: int) -> dict[str, Any]:
-    with httpx.Client(timeout=TIMEOUT) as client:
+    with httpx.Client(timeout=TIMEOUT, headers={"X-API-Key": API_KEY}) as client:
         response = client.post(
             f"{BACKEND_URL}/agent",
             json={"question": question, "max_iterations": max_iterations},

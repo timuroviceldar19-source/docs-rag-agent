@@ -88,7 +88,7 @@ def agent_client(
     main_module.get_vector_store = lambda: populated_store  # type: ignore[assignment]
     main_module.get_llm_client = lambda: FakeAgentLLMClient()  # type: ignore[assignment]
 
-    return TestClient(app)
+    return TestClient(app, headers={"X-API-Key": "dev-key"})
 
 
 # --- Tests ---
