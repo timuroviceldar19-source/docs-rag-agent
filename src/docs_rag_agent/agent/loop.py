@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from docs_rag_agent.agent.tools import execute_search
 from docs_rag_agent.llm import LLMClient, Message
-from docs_rag_agent.retrieve import SearchResult, VectorStore
+from docs_rag_agent.retrieve import Reranker, SearchResult, VectorStore
 
 
 @dataclass
@@ -34,14 +34,14 @@ SYSTEM_PROMPT = """You are a ReAct agent answering questions about FastAPI docum
 
 You have access to ONE tool:
 
-  search_docs(query: str, top_k: int = 3)
+  search_docs(query: str, top_k: int = 5)
   Searches the FastAPI documentation and returns relevant text chunks.
 
 On EVERY turn, respond with ONLY a JSON object — no prose, no markdown fences.
 
 When you need to search, use:
 {"thought": "<your reasoning>", "action": "search_docs",
- "action_input": {"query": "<query>", "top_k": 3}}
+ "action_input": {"query": "<query>", "top_k": 5}}
 
 When you have enough information to answer, use:
 {"thought": "<your reasoning>", "final_answer": "<complete answer citing source files>"}
@@ -52,7 +52,20 @@ Rules:
   (different keywords, different angle) — do not repeat near-identical queries.
 - If you cannot make progress after a couple of searches, give a partial
   final_answer with whatever you have rather than burning more iterations.
-- Cite source files in your answer using [filename.md] notation."""
+- Cite source files in your answer using [filename.md] notation.
+
+Final-answer quality requirements:
+- For "how do I ..." / "how to ..." questions, include a concrete code example
+  copied (or closely adapted) from the observed chunks — not just a verbal
+  description. Use a fenced ```python block.
+- Structure the final_answer as:
+    1. One- or two-sentence explanation of the approach.
+    2. A code example in a ```python fenced block.
+    3. A short "Source: [filename.md]" line (one or more files).
+- Prefer completeness over brevity: if multiple steps are needed (e.g. define a
+  dependency, then use it in a path operation), show all of them.
+- Do not invent code that is not supported by the observations. If a needed
+  detail is missing, say so explicitly instead of guessing."""
 
 
 def _source_key(r: SearchResult) -> tuple[str, str, str]:
@@ -77,6 +90,7 @@ def run_agent(
     store: VectorStore,
     llm: LLMClient,
     max_iterations: int = MAX_ITERATIONS,
+    reranker: Reranker | None = None,
 ) -> AgentResult:
     messages = [
         Message(role="system", content=SYSTEM_PROMPT),
@@ -91,7 +105,10 @@ def run_agent(
     model_name = ""
 
     for _ in range(max_iterations):
-        response = llm.generate(messages, max_tokens=512, temperature=0.0)
+        # 1024 matches the query-mode budget. Intermediate ReAct turns emit
+        # a small JSON action and won't use most of it; final_answer turns
+        # need the room to include a code example + citations.
+        response = llm.generate(messages, max_tokens=1024, temperature=0.0)
         total_input += response.input_tokens
         total_output += response.output_tokens
         model_name = response.model
@@ -128,13 +145,13 @@ def run_agent(
             action_input = raw.get("action_input", {})
             if not isinstance(action_input, dict):
                 action_input = {}
-            
+
             step = AgentStep(thought=thought, action=action, action_input=action_input)
-            
+
             if action == "search_docs":
                 query = str(action_input.get("query", question))
                 top_k = int(action_input.get("top_k", 3))
-                results = execute_search(store, query, top_k)
+                results = execute_search(store, query, top_k, reranker=reranker)
 
                 new_results: list[SearchResult] = []
                 for r in results:
@@ -157,7 +174,7 @@ def run_agent(
                         {
                             "source": r.metadata.get("source", ""),
                             "heading": r.metadata.get("heading", ""),
-                            "text": r.text[:300],
+                            "text": r.text[:1200],
                         }
                         for r in new_results
                     ]

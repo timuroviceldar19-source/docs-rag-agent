@@ -9,16 +9,16 @@
 
 ## Features
 
-- **Multi-provider LLM** — Gemini, Anthropic, OpenAI via a shared `Protocol`; swap with one env var
+- **Multi-provider LLM** — Gemini, Anthropic, OpenAI, Groq via a shared `Protocol`; swap with one env var
 - **Local embeddings** — `fastembed` (BAAI/bge-small-en-v1.5), no embedding API costs
 - **Qdrant vector store** — similarity search with source + heading metadata
 - **Ingest pipeline** — Markdown → chunk → embed → upsert, idempotent
 - **ReAct agent** — multi-step reasoning loop with `search_docs` tool (`/agent` endpoint)
 - **FastAPI layer** — `/query`, `/agent`, `/healthz` with full Pydantic v2 models
-- **Retrieval evals** — hit rate, MRR, LLM-as-judge faithfulness (10-item golden dataset)
+- **Retrieval evals** — hit rate, MRR, LLM-as-judge faithfulness. *Stabilized agent JSON parsing and migrated to Groq, achieving **80% Hit Rate**, **0.462 MRR**, and **0.930 Mean Faithfulness** on the 10-item golden set. Implemented two-stage retrieval with a Cross-Encoder Reranker (`BAAI/bge-reranker-base`), boosting Hit Rate to **100%** and MRR to **0.557**.*
 - **Optional Langfuse tracing** — zero cost when keys absent
 - **Docker Compose** — `docker-compose up --build` starts Qdrant + API
-- **57 tests** — pure unit tests, no external services, no API keys required
+- **61 tests** — pure unit tests, no external services, no API keys required
 
 ## Architecture
 
@@ -133,14 +133,15 @@ curl -X POST http://localhost:8000/agent \
 
 ```bash
 # Requires Qdrant running with ingested docs
-python scripts/eval.py --top-k 5             # hit rate + MRR
-python scripts/eval.py --top-k 5 --judge     # + LLM-as-judge faithfulness
+python scripts/eval.py --top-k 5                       # hit rate + MRR
+python scripts/eval.py --top-k 5 --judge               # + LLM-as-judge faithfulness
+python scripts/eval.py --top-k 5 --judge --rerank      # + cross-encoder reranker
 ```
 
 ## Running tests
 
 ```bash
-pytest          # 57 tests, no network required
+pytest          # 61 tests, no network required
 mypy src/       # strict type check, 25 source files
 ruff check .    # linting
 ```

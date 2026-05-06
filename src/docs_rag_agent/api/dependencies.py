@@ -9,7 +9,7 @@ from qdrant_client import QdrantClient
 from docs_rag_agent.config import Settings
 from docs_rag_agent.embeddings import FastEmbedLocalEmbedder
 from docs_rag_agent.llm import LLMClient, build_llm_client
-from docs_rag_agent.retrieve import VectorStore
+from docs_rag_agent.retrieve import CrossEncoderReranker, Reranker, VectorStore
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -54,3 +54,11 @@ def get_vector_store() -> VectorStore:
 def get_llm_client() -> LLMClient:
     settings = get_settings()
     return build_llm_client(settings)
+
+
+@functools.lru_cache(maxsize=1)
+def get_reranker() -> Reranker | None:
+    settings = get_settings()
+    if not settings.rerank_enabled:
+        return None
+    return CrossEncoderReranker(model_name=settings.rerank_model)

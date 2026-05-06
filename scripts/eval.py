@@ -18,7 +18,7 @@ from docs_rag_agent.eval import (
     summarize,
 )
 from docs_rag_agent.llm import build_llm_client
-from docs_rag_agent.retrieve import VectorStore
+from docs_rag_agent.retrieve import CrossEncoderReranker, VectorStore
 
 app = typer.Typer()
 
@@ -28,6 +28,8 @@ def run(
     dataset: Path = typer.Option(Path("data/eval_dataset.json"), help="Path to eval dataset."),
     top_k: int = typer.Option(5, help="Number of chunks to retrieve per question."),
     judge: bool = typer.Option(False, help="Run LLM-as-judge faithfulness evaluation."),
+    rerank: bool = typer.Option(False, help="Apply cross-encoder reranker after retrieval."),
+    fetch_k: int = typer.Option(20, help="Over-fetch size before reranking."),
     output: Path = typer.Option(Path(""), help="Save JSON results to this path (optional)."),
 ) -> None:
     """Evaluate retrieval quality and optionally LLM answer faithfulness."""
@@ -40,13 +42,18 @@ def run(
         embedder=embedder,
     )
     llm = build_llm_client(settings) if judge else None
+    reranker = CrossEncoderReranker(model_name=settings.rerank_model) if rerank else None
 
     raw = json.loads(dataset.read_text(encoding="utf-8"))
     records = [EvalRecord(**item) for item in raw]
     results: list[EvalResult] = []
 
     for rec in records:
-        search_results = store.search(rec.question, top_k=top_k)
+        if reranker is None:
+            search_results = store.search(rec.question, top_k=top_k)
+        else:
+            candidates = store.search(rec.question, top_k=max(fetch_k, top_k))
+            search_results = reranker.rerank(rec.question, candidates, top_k=top_k)
         hit = compute_hit(search_results, rec.expected_source_contains)
         rr = compute_reciprocal_rank(search_results, rec.expected_source_contains)
 

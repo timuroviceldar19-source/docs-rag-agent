@@ -6,7 +6,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from docs_rag_agent.agent.loop import run_agent
-from docs_rag_agent.api.dependencies import get_llm_client, get_vector_store, verify_api_key
+from docs_rag_agent.api.dependencies import (
+    get_llm_client,
+    get_reranker,
+    get_settings,
+    get_vector_store,
+    verify_api_key,
+)
 from docs_rag_agent.llm import LLMError, LLMRateLimitError, Message
 from docs_rag_agent.tracing import trace_agent, trace_query
 
@@ -83,16 +89,26 @@ def healthz() -> dict[str, str]:
 def query(request: QueryRequest) -> QueryResponse:
     store = get_vector_store()
     llm = get_llm_client()
-    
-    results = store.search(request.question, top_k=request.top_k)
+    reranker = get_reranker()
+    settings = get_settings()
+
+    if reranker is None:
+        results = store.search(request.question, top_k=request.top_k)
+    else:
+        candidates = store.search(
+            request.question,
+            top_k=max(settings.rerank_fetch_k, request.top_k),
+        )
+        results = reranker.rerank(request.question, candidates, top_k=request.top_k)
+
     if not results:
         raise HTTPException(status_code=404, detail="No relevant chunks found.")
-    
+
     context = "\n\n---\n\n".join(
-        f"[{r.metadata.get('source', 'unknown')} / {r.metadata.get('heading', 'none')}]\n{r.text}" 
+        f"[{r.metadata.get('source', 'unknown')} / {r.metadata.get('heading', 'none')}]\n{r.text}"
         for r in results
     )
-    
+
     messages = [
         Message(
             role="system",
@@ -107,18 +123,18 @@ def query(request: QueryRequest) -> QueryResponse:
             content=f"Context:\n{context}\n\nQuestion: {request.question}",
         ),
     ]
-    
+
     response = llm.generate(messages, max_tokens=1024, temperature=0.0)
-    
+
     result = QueryResponse(
         answer=response.content,
         chunks=[
             CitedChunk(
-                text=r.text, 
-                source=r.metadata.get("source", "unknown"), 
-                heading=r.metadata.get("heading", "none"), 
+                text=r.text,
+                source=r.metadata.get("source", "unknown"),
+                heading=r.metadata.get("heading", "none"),
                 score=r.score
-            ) 
+            )
             for r in results
         ],
         model=response.model,
@@ -139,11 +155,13 @@ def query(request: QueryRequest) -> QueryResponse:
 def agent_endpoint(request: AgentRequest) -> AgentResponse:
     store = get_vector_store()
     llm = get_llm_client()
+    reranker = get_reranker()
     result = run_agent(
         question=request.question,
         store=store,
         llm=llm,
         max_iterations=request.max_iterations,
+        reranker=reranker,
     )
     response_obj = AgentResponse(
         answer=result.answer,
