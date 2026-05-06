@@ -129,6 +129,30 @@ curl -X POST http://localhost:8000/agent \
   -d '{"question": "What is the difference between path and query parameters?", "max_iterations": 5}'
 ```
 
+**Streaming (SSE):**
+
+Both endpoints have streaming variants — `POST /query/stream` and `POST /agent/stream` — returning `text/event-stream`.
+
+```bash
+curl -N -X POST http://localhost:8000/query/stream \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: dev-key" \
+  -d '{"question": "How do I declare path parameters?", "top_k": 5}'
+```
+
+`/query/stream` frame schema:
+
+| event    | when             | `data` payload                                            |
+|----------|------------------|-----------------------------------------------------------|
+| `chunks` | once, up front   | `{"chunks": [{text, source, heading, score}, ...]}`       |
+| `token`  | many, in order   | `{"text": "..."}` — append to accumulator                 |
+| `end`    | once, at the end | `{"model", "input_tokens", "output_tokens"}`              |
+| `error`  | on failure       | `{"detail": "..."}` (replaces `end` — stream is cut)      |
+
+`/agent/stream` emits one `step` event per ReAct turn (`{thought, action, action_input, observation, final_answer}`) and exactly one `final` event at the end (`{answer, chunks, model, input_tokens, output_tokens}`).
+
+Errors are surfaced as `event: error` frames inside the stream, never as 5xx — so the HTTP status is always 200 once the stream opens.
+
 **Retrieval eval:**
 
 ```bash
@@ -141,7 +165,7 @@ python scripts/eval.py --top-k 5 --judge --rerank      # + cross-encoder reranke
 ## Running tests
 
 ```bash
-pytest          # 61 tests, no network required
+pytest          # 70 tests, no network required
 mypy src/       # strict type check, 25 source files
 ruff check .    # linting
 ```

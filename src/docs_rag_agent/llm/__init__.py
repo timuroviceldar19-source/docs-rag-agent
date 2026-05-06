@@ -3,6 +3,7 @@ from docs_rag_agent.llm.base import (
     LLMError,
     LLMRateLimitError,
     LLMResponse,
+    LLMStreamChunk,
     Message,
 )
 from docs_rag_agent.llm.factory import build_llm_client
@@ -12,6 +13,7 @@ __all__ = [
     "LLMError",
     "LLMRateLimitError",
     "LLMResponse",
+    "LLMStreamChunk",
     "Message",
     "build_llm_client",
 ]

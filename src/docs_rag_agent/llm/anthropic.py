@@ -1,9 +1,16 @@
+from collections.abc import Iterator
 from typing import cast
 
 import anthropic
 from anthropic.types import TextBlock
 
-from docs_rag_agent.llm.base import LLMError, LLMRateLimitError, LLMResponse, Message
+from docs_rag_agent.llm.base import (
+    LLMError,
+    LLMRateLimitError,
+    LLMResponse,
+    LLMStreamChunk,
+    Message,
+)
 
 
 class AnthropicClient:
@@ -44,4 +51,41 @@ class AnthropicClient:
             model=self._model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
+        )
+
+    def generate_stream(
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> Iterator[LLMStreamChunk]:
+        system_messages = [m.content for m in messages if m.role == "system"]
+        other_messages = [m for m in messages if m.role != "system"]
+
+        system_prompt = "\n\n".join(system_messages) if system_messages else None
+        api_messages = [{"role": m.role, "content": m.content} for m in other_messages]
+
+        try:
+            with self._client.messages.stream(
+                model=self._model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,  # type: ignore[arg-type]
+                messages=api_messages,  # type: ignore[arg-type]
+            ) as stream:
+                for text in stream.text_stream:
+                    if text:
+                        yield LLMStreamChunk(text=text)
+                final = stream.get_final_message()
+        except anthropic.RateLimitError as e:
+            raise LLMRateLimitError(str(e)) from e
+        except anthropic.APIError as e:
+            raise LLMError(f"Anthropic API error: {e}") from e
+
+        yield LLMStreamChunk(
+            is_final=True,
+            model=self._model,
+            input_tokens=final.usage.input_tokens,
+            output_tokens=final.usage.output_tokens,
         )

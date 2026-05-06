@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from docs_rag_agent.agent.tools import execute_search
 from docs_rag_agent.llm import LLMClient, Message
@@ -85,13 +86,19 @@ def _extract_json(text: str) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(clean_text))
 
 
-def run_agent(
+AgentEvent = tuple[Literal["step"], AgentStep] | tuple[Literal["final"], AgentResult]
+
+
+def run_agent_iter(
     question: str,
     store: VectorStore,
     llm: LLMClient,
     max_iterations: int = MAX_ITERATIONS,
     reranker: Reranker | None = None,
-) -> AgentResult:
+) -> Iterator[AgentEvent]:
+    """Streaming version of run_agent: yields ("step", AgentStep) events as
+    each ReAct iteration completes, then exactly one ("final", AgentResult).
+    """
     messages = [
         Message(role="system", content=SYSTEM_PROMPT),
         Message(role="user", content=f"Question: {question}"),
@@ -125,6 +132,7 @@ def run_agent(
                 ),
             )
             steps.append(step)
+            yield ("step", step)
             messages.append(Message(role="assistant", content=response.content))
             messages.append(Message(role="user", content=f"Observation: {step.observation}"))
             continue
@@ -132,14 +140,19 @@ def run_agent(
         if "final_answer" in raw:
             step = AgentStep(thought=thought, final_answer=str(raw["final_answer"]))
             steps.append(step)
-            return AgentResult(
-                answer=str(raw["final_answer"]),
-                steps=steps,
-                sources=all_sources,
-                model=model_name,
-                input_tokens=total_input,
-                output_tokens=total_output,
+            yield ("step", step)
+            yield (
+                "final",
+                AgentResult(
+                    answer=str(raw["final_answer"]),
+                    steps=steps,
+                    sources=all_sources,
+                    model=model_name,
+                    input_tokens=total_input,
+                    output_tokens=total_output,
+                ),
             )
+            return
         else:
             action = str(raw.get("action", ""))
             action_input = raw.get("action_input", {})
@@ -182,29 +195,59 @@ def run_agent(
 
                 if consecutive_empty >= 2:
                     steps.append(step)
-                    return AgentResult(
-                        answer=(
-                            "Stopped early: two consecutive searches returned no "
-                            "new sources. Try a more specific question."
+                    yield ("step", step)
+                    yield (
+                        "final",
+                        AgentResult(
+                            answer=(
+                                "Stopped early: two consecutive searches returned no "
+                                "new sources. Try a more specific question."
+                            ),
+                            steps=steps,
+                            sources=all_sources,
+                            model=model_name,
+                            input_tokens=total_input,
+                            output_tokens=total_output,
                         ),
-                        steps=steps,
-                        sources=all_sources,
-                        model=model_name,
-                        input_tokens=total_input,
-                        output_tokens=total_output,
                     )
+                    return
             else:
                 step.observation = f"Unknown tool: {action}"
 
             steps.append(step)
+            yield ("step", step)
             messages.append(Message(role="assistant", content=response.content))
             messages.append(Message(role="user", content=f"Observation: {step.observation}"))
 
-    return AgentResult(
-        answer="Could not find a definitive answer within the iteration limit.",
-        steps=steps,
-        sources=all_sources,
-        model=model_name,
-        input_tokens=total_input,
-        output_tokens=total_output,
+    yield (
+        "final",
+        AgentResult(
+            answer="Could not find a definitive answer within the iteration limit.",
+            steps=steps,
+            sources=all_sources,
+            model=model_name,
+            input_tokens=total_input,
+            output_tokens=total_output,
+        ),
     )
+
+
+def run_agent(
+    question: str,
+    store: VectorStore,
+    llm: LLMClient,
+    max_iterations: int = MAX_ITERATIONS,
+    reranker: Reranker | None = None,
+) -> AgentResult:
+    final: AgentResult | None = None
+    for kind, payload in run_agent_iter(
+        question=question,
+        store=store,
+        llm=llm,
+        max_iterations=max_iterations,
+        reranker=reranker,
+    ):
+        if kind == "final":
+            final = cast(AgentResult, payload)
+    assert final is not None, "run_agent_iter must yield a final event"
+    return final

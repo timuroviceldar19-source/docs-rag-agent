@@ -1,8 +1,16 @@
+from collections.abc import Iterator
+
 import google.genai as genai  # type: ignore[import-untyped]
 import google.genai.errors as genai_errors  # type: ignore[import-untyped]
 import google.genai.types as genai_types  # type: ignore[import-untyped]
 
-from docs_rag_agent.llm.base import LLMError, LLMRateLimitError, LLMResponse, Message
+from docs_rag_agent.llm.base import (
+    LLMError,
+    LLMRateLimitError,
+    LLMResponse,
+    LLMStreamChunk,
+    Message,
+)
 
 
 class GeminiClient:
@@ -53,6 +61,59 @@ class GeminiClient:
 
         return LLMResponse(
             content=response.text or "",
+            model=self._model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+
+    def generate_stream(
+        self,
+        messages: list[Message],
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> Iterator[LLMStreamChunk]:
+        system_messages = [m.content for m in messages if m.role == "system"]
+        other_messages = [m for m in messages if m.role != "system"]
+
+        system_instruction = "\n\n".join(system_messages) if system_messages else None
+
+        contents = [
+            {"role": "model" if m.role == "assistant" else m.role, "parts": [{"text": m.content}]}
+            for m in other_messages
+        ]
+
+        config = genai_types.GenerateContentConfig(
+            max_output_tokens=max_tokens,
+            temperature=temperature,
+            system_instruction=system_instruction,
+        )
+
+        input_tokens = 0
+        output_tokens = 0
+        try:
+            for chunk in self._client.models.generate_content_stream(
+                model=self._model,
+                contents=contents,
+                config=config,
+            ):
+                text = chunk.text or ""
+                if text:
+                    yield LLMStreamChunk(text=text)
+                # Gemini streams cumulative usage on each chunk; the last
+                # one wins.
+                usage = getattr(chunk, "usage_metadata", None)
+                if usage is not None:
+                    input_tokens = usage.prompt_token_count or input_tokens
+                    output_tokens = usage.candidates_token_count or output_tokens
+        except genai_errors.APIError as e:
+            code = getattr(e, "code", None) or getattr(e, "status_code", None)
+            if code == 429:
+                raise LLMRateLimitError(str(e)) from e
+            raise LLMError(f"Gemini API error: {e}") from e
+
+        yield LLMStreamChunk(
+            is_final=True,
             model=self._model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
