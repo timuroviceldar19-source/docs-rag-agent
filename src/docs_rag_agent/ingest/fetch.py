@@ -11,5 +11,10 @@ def clone_or_pull(repo_url: str, target_dir: Path) -> None:
 
 
 def collect_markdown_files(docs_root: Path) -> list[Path]:
-    """Return sorted list of all *.md files under docs_root (recursive)."""
-    return sorted(docs_root.rglob("*.md"))
+    """Return sorted list of *.md files under docs_root, recursively.
+
+    Files starting with an underscore (FastAPI's convention for non-content
+    fixtures like ``_llm-test.md``) are skipped — they pollute retrieval
+    quality without adding signal.
+    """
+    return sorted(p for p in docs_root.rglob("*.md") if not p.name.startswith("_"))
