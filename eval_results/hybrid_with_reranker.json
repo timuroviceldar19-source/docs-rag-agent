@@ -1,0 +1,84 @@
+{
+  "summary": {
+    "hit_rate": 0.8,
+    "mrr": 0.5166666666666666,
+    "mean_faithfulness": 0.0
+  },
+  "mode": "query",
+  "rerank": true,
+  "hybrid": true,
+  "top_k": 5,
+  "max_iterations": null,
+  "results": [
+    {
+      "id": "q01",
+      "question": "How do I declare path parameters in FastAPI?",
+      "hit": false,
+      "reciprocal_rank": 0.0,
+      "faithfulness": null
+    },
+    {
+      "id": "q02",
+      "question": "How do I define a request body using Pydantic in FastAPI?",
+      "hit": true,
+      "reciprocal_rank": 0.3333333333333333,
+      "faithfulness": null
+    },
+    {
+      "id": "q03",
+      "question": "How do I use dependency injection in FastAPI?",
+      "hit": true,
+      "reciprocal_rank": 0.3333333333333333,
+      "faithfulness": null
+    },
+    {
+      "id": "q04",
+      "question": "How do I add query parameters to a FastAPI endpoint?",
+      "hit": true,
+      "reciprocal_rank": 1.0,
+      "faithfulness": null
+    },
+    {
+      "id": "q05",
+      "question": "How do I define a response model in FastAPI?",
+      "hit": true,
+      "reciprocal_rank": 0.5,
+      "faithfulness": null
+    },
+    {
+      "id": "q06",
+      "question": "How do I run background tasks in FastAPI?",
+      "hit": true,
+      "reciprocal_rank": 1.0,
+      "faithfulness": null
+    },
+    {
+      "id": "q07",
+      "question": "How do I handle startup and shutdown events in FastAPI?",
+      "hit": true,
+      "reciprocal_rank": 1.0,
+      "faithfulness": null
+    },
+    {
+      "id": "q08",
+      "question": "How do I add CORS middleware to a FastAPI application?",
+      "hit": true,
+      "reciprocal_rank": 0.5,
+      "faithfulness": null
+    },
+    {
+      "id": "q09",
+      "question": "How do I create async path operations in FastAPI?",
+      "hit": true,
+      "reciprocal_rank": 0.5,
+      "faithfulness": null
+    },
+    {
+      "id": "q10",
+      "question": "How do I create the first FastAPI application?",
+      "hit": false,
+      "reciprocal_rank": 0.0,
+      "faithfulness": null
+    }
+  ]
+}

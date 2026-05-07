@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "fastapi_docs"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
+    hybrid_enabled: bool = True
+    sparse_model: str = "Qdrant/bm25"
+    hybrid_fetch_k: int = 50  # per-leg (dense + sparse) candidates before RRF
     rerank_enabled: bool = True
     rerank_model: str = "BAAI/bge-reranker-base"
     rerank_fetch_k: int = 20  # over-fetch from vector store, then rerank to top_k

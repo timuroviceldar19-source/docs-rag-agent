@@ -24,7 +24,8 @@ from qdrant_client import QdrantClient
 
 from docs_rag_agent.agent.loop import run_agent
 from docs_rag_agent.config import Settings
-from docs_rag_agent.embeddings import FastEmbedLocalEmbedder
+from docs_rag_agent.embeddings import FastEmbedLocalEmbedder, FastEmbedSparseEmbedder
+from docs_rag_agent.embeddings.sparse import SparseEmbedder
 from docs_rag_agent.eval import (
     EvalRecord,
     EvalResult,
@@ -117,6 +118,14 @@ def run(
     judge: bool = typer.Option(False, help="Run LLM-as-judge faithfulness evaluation."),
     rerank: bool = typer.Option(False, help="Apply cross-encoder reranker after retrieval."),
     fetch_k: int = typer.Option(20, help="Over-fetch size before reranking."),
+    hybrid: bool = typer.Option(
+        True,
+        help=(
+            "Use hybrid (dense + BM25 + RRF) retrieval. Requires the collection "
+            "to have been ingested with sparse vectors. Disable with --no-hybrid "
+            "to run dense-only against a dense-only collection."
+        ),
+    ),
     mode: str = typer.Option(
         "query",
         help="`query` — retrieval-only eval. `agent` — run the ReAct loop end-to-end.",
@@ -137,11 +146,16 @@ def run(
 
     settings = Settings()
     embedder = FastEmbedLocalEmbedder(settings.embedding_model)
+    sparse_embedder: SparseEmbedder | None = (
+        FastEmbedSparseEmbedder(model_name=settings.sparse_model) if hybrid else None
+    )
     client = QdrantClient(url=settings.qdrant_url)
     store = VectorStore(
         client=client,
         collection=settings.qdrant_collection,
         embedder=embedder,
+        sparse_embedder=sparse_embedder,
+        hybrid_fetch_k=settings.hybrid_fetch_k,
     )
     # Agent mode always needs the LLM. Query mode only needs it for --judge.
     base_llm = build_llm_client(settings) if (judge or mode == "agent") else None
@@ -205,7 +219,10 @@ def run(
         typer.echo(f"[{label}] RR={rr:.2f}{faith_str}  {rec.question[:70]}", err=True)
 
     summary = summarize(results)
-    typer.echo(f"\nMode: {mode}{' + rerank' if rerank else ''}", err=True)
+    label = "hybrid" if hybrid else "dense"
+    if rerank:
+        label += " + rerank"
+    typer.echo(f"\nMode: {mode} ({label})", err=True)
     typer.echo(f"Hit Rate @ {top_k}:    {summary['hit_rate']:.2%}", err=True)
     typer.echo(f"MRR @ {top_k}:          {summary['mrr']:.3f}", err=True)
     if summary["mean_faithfulness"] > 0.0:
@@ -217,6 +234,7 @@ def run(
             "summary": summary,
             "mode": mode,
             "rerank": rerank,
+            "hybrid": hybrid,
             "top_k": top_k,
             "max_iterations": max_iterations if mode == "agent" else None,
             "results": [

@@ -7,7 +7,11 @@ from fastapi.security import APIKeyHeader
 from qdrant_client import QdrantClient
 
 from docs_rag_agent.config import Settings
-from docs_rag_agent.embeddings import FastEmbedLocalEmbedder
+from docs_rag_agent.embeddings import (
+    FastEmbedLocalEmbedder,
+    FastEmbedSparseEmbedder,
+    SparseEmbedder,
+)
 from docs_rag_agent.llm import LLMClient, build_llm_client
 from docs_rag_agent.retrieve import CrossEncoderReranker, Reranker, VectorStore
 
@@ -39,14 +43,25 @@ def get_qdrant_client() -> QdrantClient:
 
 
 @functools.lru_cache(maxsize=1)
+def get_sparse_embedder() -> SparseEmbedder | None:
+    settings = get_settings()
+    if not settings.hybrid_enabled:
+        return None
+    return FastEmbedSparseEmbedder(model_name=settings.sparse_model)
+
+
+@functools.lru_cache(maxsize=1)
 def get_vector_store() -> VectorStore:
     client = get_qdrant_client()
     embedder = get_embedder()
+    sparse_embedder = get_sparse_embedder()
     settings = get_settings()
     return VectorStore(
         client=client,
         collection=settings.qdrant_collection,
         embedder=embedder,
+        sparse_embedder=sparse_embedder,
+        hybrid_fetch_k=settings.hybrid_fetch_k,
     )
 
 

@@ -11,14 +11,36 @@
 
 - **Multi-provider LLM** — Gemini, Anthropic, OpenAI, Groq via a shared `Protocol`; swap with one env var
 - **Local embeddings** — `fastembed` (BAAI/bge-small-en-v1.5), no embedding API costs
-- **Qdrant vector store** — similarity search with source + heading metadata
+- **Hybrid retrieval** — dense (BGE) + sparse (BM25) with server-side RRF fusion in Qdrant
+- **Cross-encoder reranker** — `BAAI/bge-reranker-base` for two-stage retrieval
+- **Qdrant vector store** — named-vector layout (dense + bm25 with IDF modifier)
 - **Ingest pipeline** — Markdown → chunk → embed → upsert, idempotent
 - **ReAct agent** — multi-step reasoning loop with `search_docs` tool (`/agent` endpoint)
-- **FastAPI layer** — `/query`, `/agent`, `/healthz` with full Pydantic v2 models
-- **Retrieval evals** — hit rate, MRR, LLM-as-judge faithfulness. *Stabilized agent JSON parsing and migrated to Groq, achieving **80% Hit Rate**, **0.462 MRR**, and **0.930 Mean Faithfulness** on the 10-item golden set. Implemented two-stage retrieval with a Cross-Encoder Reranker (`BAAI/bge-reranker-base`), boosting Hit Rate to **100%** and MRR to **0.557**.*
+- **FastAPI layer** — `/query`, `/agent`, `/healthz` (+ `/query/stream`, `/agent/stream` SSE) with full Pydantic v2 models
+- **Retrieval evals** — hit rate, MRR, LLM-as-judge faithfulness on a 10-item golden set
 - **Optional Langfuse tracing** — zero cost when keys absent
 - **Docker Compose** — `docker-compose up --build` starts Qdrant + API
-- **61 tests** — pure unit tests, no external services, no API keys required
+- **76 tests** — pure unit tests, no external services, no API keys required
+
+### Retrieval benchmark
+
+Measured on a 10-item golden set (`data/eval_dataset.json`) over the FastAPI docs corpus
+(8755 chunks). Numbers are exact, captured by `scripts/eval.py`.
+
+| Pipeline | Hit Rate@5 | MRR@5 |
+|---|---|---|
+| Dense only (BGE-small) | 80% | 0.462 |
+| Dense + cross-encoder rerank | **100%** | **0.557** |
+| Hybrid (dense + BM25 + RRF) | 70% | 0.540 |
+| Hybrid + cross-encoder rerank | 80% | 0.517 |
+
+Honest read: on this dataset, where queries are natural-language documentation
+questions and the corpus is well-edited prose, **dense + reranker wins**. Hybrid
+helps less because BGE-small already captures intent; BM25 mostly adds noise from
+tokens that overlap with off-topic chunks. Hybrid is wired in as the production
+pipeline because it pays off on keyword-heavy workloads (code identifiers, exact
+terminology, acronyms) — the architecture is the point. Toggle either layer
+independently via `HYBRID_ENABLED` / `RERANK_ENABLED`.
 
 ## Architecture
 
@@ -157,15 +179,17 @@ Errors are surfaced as `event: error` frames inside the stream, never as 5xx —
 
 ```bash
 # Requires Qdrant running with ingested docs
-python scripts/eval.py --top-k 5                       # hit rate + MRR
-python scripts/eval.py --top-k 5 --judge               # + LLM-as-judge faithfulness
-python scripts/eval.py --top-k 5 --judge --rerank      # + cross-encoder reranker
+python scripts/eval.py --top-k 5                              # hit rate + MRR (hybrid by default)
+python scripts/eval.py --top-k 5 --judge                      # + LLM-as-judge faithfulness
+python scripts/eval.py --top-k 5 --judge --rerank             # + cross-encoder reranker
+python scripts/eval.py --top-k 5 --no-hybrid --rerank         # dense-only retrieval (the winning configuration)
+python scripts/eval.py --mode agent --judge --rerank          # end-to-end ReAct agent eval
 ```
 
 ## Running tests
 
 ```bash
-pytest          # 70 tests, no network required
+pytest          # 76 tests, no network required
 mypy src/       # strict type check, 25 source files
 ruff check .    # linting
 ```
@@ -176,8 +200,9 @@ ruff check .    # linting
 |---|---|
 | API | FastAPI 0.115 + Pydantic v2 |
 | LLM | Gemini / Anthropic / OpenAI (swappable Protocol) |
-| Embeddings | fastembed · BAAI/bge-small-en-v1.5 (local) |
-| Vector DB | Qdrant |
+| Embeddings | fastembed · BAAI/bge-small-en-v1.5 (dense) + Qdrant/bm25 (sparse) |
+| Reranker | BAAI/bge-reranker-base (cross-encoder, optional) |
+| Vector DB | Qdrant — named-vector layout, server-side RRF fusion |
 | Config | pydantic-settings |
 | CLI | Typer |
 | Tests | pytest 8 · mypy --strict · ruff |

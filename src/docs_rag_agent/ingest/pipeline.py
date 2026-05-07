@@ -6,7 +6,8 @@ import typer
 from qdrant_client import QdrantClient
 
 from docs_rag_agent.config import Settings
-from docs_rag_agent.embeddings import FastEmbedLocalEmbedder
+from docs_rag_agent.embeddings import FastEmbedLocalEmbedder, FastEmbedSparseEmbedder
+from docs_rag_agent.embeddings.sparse import SparseEmbedder
 from docs_rag_agent.ingest.chunk import chunk_markdown
 from docs_rag_agent.ingest.fetch import clone_or_pull, collect_markdown_files
 from docs_rag_agent.retrieve import Document, VectorStore
@@ -79,11 +80,18 @@ def ingest(
     markdown_files = collect_markdown_files(docs_root)
     
     embedder = FastEmbedLocalEmbedder(settings.embedding_model)
+    sparse_embedder: SparseEmbedder | None = (
+        FastEmbedSparseEmbedder(model_name=settings.sparse_model)
+        if settings.hybrid_enabled
+        else None
+    )
     client = QdrantClient(url=settings.qdrant_url)
     store = VectorStore(
         client=client,
         collection=settings.qdrant_collection,
         embedder=embedder,
+        sparse_embedder=sparse_embedder,
+        hybrid_fetch_k=settings.hybrid_fetch_k,
     )
     store.ensure_collection()
     
